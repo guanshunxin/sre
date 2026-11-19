@@ -1,0 +1,8 @@
+// 真实有界流量，不注入故障、不调用 AI-SRE；下单每次使用独立幂等键。
+import fs from 'node:fs/promises';import {setTimeout as sleep} from 'node:timers/promises';
+const args=Object.fromEntries(process.argv.slice(2).map(x=>x.replace(/^--/,'').split('=')));
+const seconds=Number(args.seconds||60),concurrency=Number(args.concurrency||2),mode=args.mode||'browse';
+if(!Number.isInteger(seconds)||seconds<1||seconds>300||!Number.isInteger(concurrency)||concurrency<1||concurrency>16||!['browse','orders','mixed'].includes(mode))throw Error('seconds 1..300, concurrency 1..16, mode browse|orders|mixed');
+const env=Object.fromEntries((await fs.readFile(new URL('../.env',import.meta.url),'utf8')).split(/\r?\n/).map(x=>{const i=x.indexOf('=');return[x.slice(0,i),x.slice(i+1)];}));
+const base=args.base||'http://127.0.0.1:'+(env.WEB_PORT||18888),until=Date.now()+seconds*1000,counts={requests:0,success:0,clientErrors:0,serverErrors:0,networkErrors:0};
+await Promise.all(Array.from({length:concurrency},async()=>{while(Date.now()<until){const order=mode==='orders'||mode==='mixed'&&Math.random()<.1;try{const r=await fetch(base+(order?'/api/orders':'/api/products'),{method:order?'POST':'GET',headers:{Authorization:'Bearer '+env.SHOP_API_TOKEN,'Content-Type':'application/json',...(order?{'Idempotency-Key':'load-'+crypto.randomUUID()}:{})},...(order?{body:JSON.stringify({productId:1,quantity:1,region:'LOCAL'})}:{}),signal:AbortSignal.timeout(10000)});await r.arrayBuffer();counts.requests++;if(r.status<400)counts.success++;else if(r.status<500)counts.clientErrors++;else counts.serverErrors++;}catch{counts.networkErrors++;}await sleep(200);}}));console.log(JSON.stringify(counts));

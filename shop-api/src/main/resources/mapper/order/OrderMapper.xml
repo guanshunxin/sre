@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.gsx.shop.order.mapper.OrderMapper">
+ <sql id="cols">id,idempotency_key AS idempotencyKey,request_hash AS requestHash,product_id AS productId,quantity,region,total_cents AS totalCents,status,created_at AS createdAt,fulfilled_at AS fulfilledAt</sql>
+ <select id="find" resultType="com.gsx.shop.order.entity.ShopOrder">SELECT <include refid="cols"/> FROM shop_order WHERE id=#{id}</select>
+ <select id="lock" resultType="com.gsx.shop.order.entity.ShopOrder">SELECT <include refid="cols"/> FROM shop_order WHERE id=#{id} FOR UPDATE</select>
+ <select id="byKey" resultType="com.gsx.shop.order.entity.ShopOrder">SELECT <include refid="cols"/> FROM shop_order WHERE idempotency_key=#{key}</select>
+ <select id="recent" resultType="com.gsx.shop.order.entity.ShopOrder">SELECT <include refid="cols"/> FROM shop_order ORDER BY id DESC LIMIT 100</select>
+ <insert id="insert" useGeneratedKeys="true" keyProperty="id">INSERT INTO shop_order(idempotency_key,request_hash,product_id,quantity,region,total_cents,status) VALUES(#{idempotencyKey},#{requestHash},#{productId},#{quantity},#{region},#{totalCents},#{status})</insert>
+ <update id="cancel">UPDATE shop_order SET status='CANCELLED' WHERE id=#{id} AND status='ACCEPTED'</update>
+ <update id="ready">UPDATE shop_order SET status='READY',fulfilled_at=UTC_TIMESTAMP(6) WHERE id=#{id} AND status='ACCEPTED'</update>
+ <select id="received" resultType="int">SELECT COUNT(*) FROM fulfillment_receipt WHERE event_id=#{event}</select>
+ <insert id="receipt">INSERT INTO fulfillment_receipt(event_id,order_id) VALUES(#{event},#{order})</insert>
+ <select id="acceptedCount" resultType="long">SELECT COUNT(*) FROM shop_order WHERE status='ACCEPTED'</select>
+</mapper>

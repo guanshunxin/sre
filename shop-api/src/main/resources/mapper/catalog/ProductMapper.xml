@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.gsx.shop.catalog.mapper.ProductMapper">
+ <select id="list" resultType="com.gsx.shop.catalog.entity.Product">SELECT id,name,price_cents AS priceCents,stock FROM product ORDER BY id</select>
+ <select id="find" resultType="com.gsx.shop.catalog.entity.Product">SELECT id,name,price_cents AS priceCents,stock FROM product WHERE id=#{id}</select>
+ <select id="lock" resultType="com.gsx.shop.catalog.entity.Product">SELECT id,name,price_cents AS priceCents,stock FROM product WHERE id=#{id} FOR UPDATE</select>
+ <select id="stocks" resultType="com.gsx.shop.catalog.entity.StockLevel">SELECT id,stock FROM product ORDER BY id</select>
+ <!-- 同一 UPDATE 判断库存与扣减，避免读取库存后的并发超卖。 -->
+ <update id="reserve">UPDATE product SET stock=stock-#{quantity} WHERE id=#{id} AND stock&gt;=#{quantity}</update>
+ <update id="add">UPDATE product SET stock=stock+#{quantity} WHERE id=#{id}</update>
+ <insert id="movement">INSERT INTO stock_movement(product_id,order_id,delta,reason) VALUES(#{product},#{order},#{delta},#{reason})</insert>
+</mapper>

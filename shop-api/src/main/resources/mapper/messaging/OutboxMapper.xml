@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.gsx.shop.messaging.mapper.OutboxMapper">
+ <insert id="insert">INSERT INTO order_outbox(order_id) VALUES(#{order})</insert>
+ <select id="claim" resultType="com.gsx.shop.messaging.entity.OutboxEvent">SELECT id,order_id AS orderId,lease_token AS leaseToken FROM order_outbox WHERE (status='PENDING' OR status='RUNNING' AND locked_until&lt;UTC_TIMESTAMP(6)) AND next_at&lt;=UTC_TIMESTAMP(6) ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED</select>
+ <update id="lease">UPDATE order_outbox SET status='RUNNING',lease_token=#{token},locked_until=UTC_TIMESTAMP(6)+INTERVAL 15 SECOND,attempts=attempts+1 WHERE id=#{id}</update>
+ <update id="finish">UPDATE order_outbox SET status=IF(#{success},'SENT','PENDING'),locked_until=NULL,lease_token=NULL,next_at=UTC_TIMESTAMP(6)+INTERVAL 3 SECOND WHERE id=#{id} AND lease_token=#{token} AND locked_until&gt;UTC_TIMESTAMP(6)</update>
+ <select id="pendingCount" resultType="long">SELECT COUNT(*) FROM order_outbox WHERE status!='SENT'</select>
+</mapper>

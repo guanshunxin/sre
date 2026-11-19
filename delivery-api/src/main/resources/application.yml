@@ -1,0 +1,16 @@
+server:
+  port: 8080
+  shutdown: graceful
+spring.application.name: delivery-api
+access:
+  api-token: ${SHOP_API_TOKEN}
+  metrics-token: ${SHOP_METRICS_TOKEN}
+  lab-token: ${SHOP_LAB_TOKEN}
+lab.enabled: ${LAB_ENABLED:false}
+management:
+  endpoints.web.exposure.include: health,prometheus
+  endpoint.health.probes.enabled: true
+  metrics:
+    tags: {service: delivery-api, environment: '${SHOP_ENVIRONMENT:staging}'}
+    distribution.percentiles-histogram.http.server.requests: true
+logging.structured.format.console: logstash

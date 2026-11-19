@@ -1,0 +1,96 @@
+name: gsx-sample-shop
+x-app: &app
+  build: {context: .., dockerfile: infra/Dockerfile.java, args: {MODULE: shop-api}}
+  image: gsx-sample-shop-api:1.0.0
+  env_file: ../.runtime/shop.env
+  environment: &app-environment
+    SPRING_PROFILES_ACTIVE: ${SHOP_PROFILE:-standard}
+    LAB_ENABLED: '${LAB_ENABLED:-false}'
+    INSTANCE_NAME: a
+  depends_on: {mysql: {condition: service_healthy}, redis: {condition: service_healthy}, kafka: {condition: service_healthy}, delivery-api: {condition: service_healthy}}
+  healthcheck: &health
+    test: [CMD, wget, -q, -O, /dev/null, 'http://127.0.0.1:8080/actuator/health/liveness']
+    interval: 5s
+    timeout: 3s
+    retries: 50
+  restart: unless-stopped
+  logging: {driver: json-file, options: {max-size: 10m, max-file: '3'}}
+services:
+  mysql:
+    image: mysql:8.4.7
+    env_file: ../.runtime/mysql.env
+    command: [--innodb-buffer-pool-size=128M, --max-connections=60]
+    volumes: [shop-mysql:/var/lib/mysql]
+    healthcheck:
+      test: [CMD-SHELL, 'MYSQL_PWD=$$MYSQL_PASSWORD mysql -u$$MYSQL_USER -e "SELECT 1" $$MYSQL_DATABASE']
+      interval: 5s
+      timeout: 3s
+      retries: 40
+  redis:
+    image: redis:7.4.7-alpine
+    env_file: ../.runtime/redis.env
+    command: [sh, -c, 'exec redis-server --requirepass "$$REDIS_PASSWORD" --appendonly yes --maxmemory 64mb --maxmemory-policy allkeys-lru']
+    volumes: [shop-redis:/data]
+    healthcheck:
+      test: [CMD-SHELL, 'REDISCLI_AUTH=$$REDIS_PASSWORD redis-cli ping | grep -q PONG']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  kafka:
+    image: apache/kafka:4.1.1@sha256:0bc1bb2478f45b6cea78864df86acdc11e8df2c5172477819a4d12942cbe5d40
+    environment:
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: INTERNAL://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      KAFKA_HEAP_OPTS: -Xms128m -Xmx256m
+    volumes: [shop-kafka:/var/lib/kafka/data]
+    healthcheck:
+      test: [CMD-SHELL, '/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list > /dev/null']
+      interval: 5s
+      timeout: 5s
+      retries: 40
+  delivery-api:
+    build: {context: .., dockerfile: infra/Dockerfile.java, args: {MODULE: delivery-api}}
+    image: gsx-sample-delivery-api:1.0.0
+    env_file: ../.runtime/delivery.env
+    environment: {SPRING_PROFILES_ACTIVE: '${SHOP_PROFILE:-standard}', LAB_ENABLED: '${LAB_ENABLED:-false}'}
+    ports: ['${METRICS_BIND:-127.0.0.1}:19083:8080']
+    healthcheck: *health
+    restart: unless-stopped
+  shop-a:
+    <<: *app
+    ports: ['${METRICS_BIND:-127.0.0.1}:19081:8080']
+  shop-b:
+    <<: *app
+    environment: {<<: *app-environment, INSTANCE_NAME: b}
+    ports: ['${METRICS_BIND:-127.0.0.1}:19082:8080']
+  web:
+    image: gsx-sample-shop-web:1.0.0
+    build: {context: .., dockerfile: infra/Dockerfile.frontend}
+    ports: ['${WEB_BIND:-127.0.0.1}:${WEB_PORT:-18888}:8080']
+    depends_on: {shop-a: {condition: service_healthy}, shop-b: {condition: service_healthy}}
+    healthcheck: {test: [CMD, node, -e, "fetch('http://127.0.0.1:8080/health').then(r=>process.exit(r.ok?0:1))"], interval: 5s, timeout: 3s, retries: 20}
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    command: [--config.file=/etc/prometheus/prometheus.yml, --storage.tsdb.retention.time=2d]
+    ports: ['127.0.0.1:19094:9090']
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./alert-rules.yml:/etc/prometheus/alert-rules.yml:ro
+      - ../.runtime/metrics-token:/etc/prometheus/metrics-token:ro
+      - shop-prometheus:/prometheus
+volumes:
+  shop-mysql:
+  shop-redis:
+  shop-kafka:
+  shop-prometheus:

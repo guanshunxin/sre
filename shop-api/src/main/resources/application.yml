@@ -1,0 +1,50 @@
+server:
+  port: 8080
+  shutdown: graceful
+spring:
+  task.scheduling.pool.size: 4
+  application.name: sample-shop
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
+    hikari:
+      maximum-pool-size: 6
+      minimum-idle: 1
+      connection-timeout: 3000
+      connection-init-sql: SET SESSION innodb_lock_wait_timeout=2
+  data.redis:
+    host: ${REDIS_HOST:redis}
+    password: ${REDIS_PASSWORD}
+    timeout: 800ms
+    connect-timeout: 500ms
+  kafka:
+    bootstrap-servers: ${KAFKA_SERVERS:kafka:9092}
+    consumer:
+      group-id: shop-fulfillment-v1
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      properties: {enable.idempotence: true, max.block.ms: 1000, delivery.timeout.ms: 4000, request.timeout.ms: 2000}
+    listener.ack-mode: record
+mybatis:
+  mapper-locations: classpath*:mapper/**/*.xml
+  configuration: {local-cache-scope: STATEMENT, cache-enabled: false}
+access:
+  api-token: ${SHOP_API_TOKEN}
+  metrics-token: ${SHOP_METRICS_TOKEN}
+  lab-token: ${SHOP_LAB_TOKEN}
+delivery.base-url: ${DELIVERY_URL:http://delivery-api:8080}
+lab.enabled: ${LAB_ENABLED:false}
+management:
+  endpoints.web.exposure.include: health,prometheus
+  endpoint.health.probes.enabled: true
+  metrics:
+    tags: {service: shop-api, environment: '${SHOP_ENVIRONMENT:staging}', instance_name: '${INSTANCE_NAME:local}'}
+    distribution.percentiles-histogram.http.server.requests: true
+logging.structured.format.console: logstash
